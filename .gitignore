@@ -1,3 +1,4 @@
 .vscode/
 k128
+tables
 src/*.o
