@@ -6,9 +6,9 @@
 
 char *generate_primary_key(char *password);
 uint64_t *generate_subkeys(char *K);
-uint64_t *encryption_iteration(uint64_t *X, uint64_t *subkeys);
+void encryption_iteration(uint64_t *X, uint64_t *subkeys);
 uint64_t *block_encryption(uint64_t *plaintext_block, uint64_t *subkeys);
-uint64_t *decryption_iteration(uint64_t *Y, uint64_t *subkeys);
+void decryption_iteration(uint64_t *Y, uint64_t *subkeys);
 uint64_t *block_decryption(uint64_t *ciphertext_block, uint64_t *subkeys);
 
 static uint64_t to_uint64(uint8_t *buffer);

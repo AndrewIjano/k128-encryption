@@ -104,14 +104,14 @@ char *generate_primary_key(char *password)
         K[i] = password[i%pass_length];
     return K;
 }
+
 /**
  * @brief Executes one encryption iteration
  * 
  * @param X The partial encrypted 128-bit plaintext
- * @param subkeys The array of the four 64-bit subkeys
- * @return uint64_t* The result of the iteration
+ * @param subkeys The array of the four 64-bit subkeys 
  */
-uint64_t *encryption_iteration(uint64_t *X, uint64_t *subkeys) 
+void encryption_iteration(uint64_t *X, uint64_t *subkeys) 
 {
     // The first part of the iteration
     X[0] = dot(X[0], subkeys[0]);
@@ -124,8 +124,6 @@ uint64_t *encryption_iteration(uint64_t *X, uint64_t *subkeys)
 
     X[0] ^= Z;
     X[1] ^= Z;
-
-    return X;
 }
 
 /**
@@ -143,7 +141,7 @@ uint64_t *block_encryption(uint64_t *plaintext_block, uint64_t *subkeys)
     X[1] = plaintext_block[1];
     // Executes the encryption iterations
     for (int i = 0; i < R; i++)
-        X = encryption_iteration(X, subkeys + 4*i);
+        encryption_iteration(X, subkeys + 4*i);
     // Executes the final iteration
     X[0] = dot(X[0], subkeys[4*R]);
     X[1] += subkeys[4*R + 1];
@@ -153,10 +151,9 @@ uint64_t *block_encryption(uint64_t *plaintext_block, uint64_t *subkeys)
  * @brief Executes the one decryption iteration
  * 
  * @param Y The partial decrypted ciphertext
- * @param subkeys The array of the four 64-bit subkeys 
- * @return uint64_t* The result of the iteration
+ * @param subkeys The array of the four 64-bit subkeys
  */
-uint64_t *decryption_iteration(uint64_t *Y, uint64_t *subkeys)
+void decryption_iteration(uint64_t *Y, uint64_t *subkeys)
 {
     // The inverse of the second part of the encryption
     // Calculates Y1 from Y[0] = Xe' and Y[1] = Xf'
@@ -171,8 +168,6 @@ uint64_t *decryption_iteration(uint64_t *Y, uint64_t *subkeys)
     // The inverse of the first part of the encryption 
     Y[0] = inv_dot(Y[0], subkeys[0]);
     Y[1] += complement(subkeys[1]);
-
-    return Y;
 }
 
 /**
@@ -193,7 +188,7 @@ uint64_t *block_decryption(uint64_t *ciphertext_block, uint64_t *subkeys)
     Y[1] += complement(subkeys[4*R + 1]);
     // Executes the decryption iterations
     for (int i = R-1; i >= 0; i--)
-        Y = decryption_iteration(Y, subkeys + 4*i);
+        decryption_iteration(Y, subkeys + 4*i);
     return Y; 
 }
 
