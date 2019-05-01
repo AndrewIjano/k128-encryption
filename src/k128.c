@@ -1,5 +1,7 @@
 #include "k128.h"
 
+#define R 12
+
 int f_exp[] = {
     1, 45, 226, 147, 190, 69, 21, 174, 120, 3, 135, 164, 184, 56, 207,
     63, 8, 103, 9, 148, 235, 38, 168, 107, 189, 24, 52, 27, 187, 191, 114, 247, 64,
@@ -40,11 +42,10 @@ int f_log[] = {
 /**
  * @brief Generates the subskeys from the primary key K
  * 
- * @param R The number of iterations of the algorithm
  * @param K The 128-bit primary key
  * @return uint64_t* The 4*R + 2 64-bit subkeys
  */
-uint64_t *generate_subkeys(int R, char *K)
+uint64_t *generate_subkeys(char *K)
 {
     // Allocates the L and k arrays
     uint64_t *L = malloc(sizeof(uint64_t) * (4 * R + 4));
@@ -75,7 +76,9 @@ uint64_t *generate_subkeys(int R, char *K)
     uint64_t *subkeys = malloc(sizeof(uint64_t) * (4 * R + 2));
     for (int i = 1; i < 4*R + 3; i++)
         subkeys[i-1] = k[i];
-        
+    
+    free(L);
+    free(k);
     return subkeys;
 }
 
@@ -100,6 +103,98 @@ char *generate_primary_key(char *password)
     for (int i = 0; i < 16; i++)
         K[i] = password[i%pass_length];
     return K;
+}
+/**
+ * @brief Executes one encryption iteration
+ * 
+ * @param X The partial encrypted 128-bit plaintext
+ * @param subkeys The array of the four 64-bit subkeys
+ * @return uint64_t* The result of the iteration
+ */
+uint64_t *encryption_iteration(uint64_t *X, uint64_t *subkeys) 
+{
+    // The first part of the iteration
+    X[0] = dot(X[0], subkeys[0]);
+    X[1] += subkeys[1];
+
+    // The second part of the iteration
+    uint64_t Y1 = X[0] ^ X[1];
+    uint64_t Y2 = dot(dot(subkeys[2], Y1) + Y1, subkeys[3]);
+    uint64_t Z  = dot(subkeys[2], Y1) + Y2;
+
+    X[0] ^= Z;
+    X[1] ^= Z;
+
+    return X;
+}
+
+/**
+ * @brief Executes a block encryption
+ * 
+ * @param plaintext_block A 128-bit block of the plaintext
+ * @param subkeys The 64-bit subkeys
+ * @return uint64_t* The 128-bit encrypted block
+ */
+uint64_t *block_encryption(uint64_t *plaintext_block, uint64_t *subkeys)
+{
+    // Copies the plaintext block 
+    uint64_t *X = malloc(sizeof(uint64_t) * 2); 
+    X[0] = plaintext_block[0]; 
+    X[1] = plaintext_block[1];
+    // Executes the encryption iterations
+    for (int i = 0; i < R; i++)
+        X = encryption_iteration(X, subkeys + 4*i);
+    // Executes the final iteration
+    X[0] = dot(X[0], subkeys[4*R]);
+    X[1] += subkeys[4*R + 1];
+    return X;
+}
+/**
+ * @brief Executes the one decryption iteration
+ * 
+ * @param Y The partial decrypted ciphertext
+ * @param subkeys The array of the four 64-bit subkeys 
+ * @return uint64_t* The result of the iteration
+ */
+uint64_t *decryption_iteration(uint64_t *Y, uint64_t *subkeys)
+{
+    // The inverse of the second part of the encryption
+    // Calculates Y1 from Y[0] = Xe' and Y[1] = Xf'
+    // Xe' ^ Xf' = Xe^Z ^ Xf^Z = Xe ^ Xf = Y1 
+    uint64_t Y1 = Y[0] ^ Y[1];
+    uint64_t Y2 = dot(dot(subkeys[2], Y1) + Y1, subkeys[3]);
+    uint64_t Z = dot(subkeys[2], Y1) + Y2;
+    // Recovers the original Xe and Xf
+    Y[0] ^= Z;
+    Y[1] ^= Z;
+    
+    // The inverse of the first part of the encryption 
+    Y[0] = inv_dot(Y[0], subkeys[0]);
+    Y[1] += complement(subkeys[1]);
+
+    return Y;
+}
+
+/**
+ * @brief Executes a block decryption
+ * 
+ * @param ciphertext_block A 128-bit block of the ciphertext 
+ * @param subkeys The 64-bit subkeys
+ * @return uint64_t* The 128-bit decrypted block
+ */
+uint64_t *block_decryption(uint64_t *ciphertext_block, uint64_t *subkeys)
+{
+    // Copies the ciphertext block
+    uint64_t *Y = malloc(sizeof(uint64_t) * 2);
+    Y[0] = ciphertext_block[0];
+    Y[1] = ciphertext_block[1];
+    // Executes the final iteration inverse 
+    Y[0] = inv_dot(Y[0], subkeys[4*R]);
+    Y[1] += complement(subkeys[4*R + 1]);
+    // Executes the decryption iterations
+    for (int i = R-1; i >= 0; i--)
+        Y = decryption_iteration(Y, subkeys + 4*i);
+    return Y; 
 }
 
 /**
@@ -170,7 +265,38 @@ static uint64_t dot(uint64_t b, uint64_t c)
     uint8_t *C = to_uint8(c);
 
     for (int i = 0; i < 8; i++)
-        A[i] = f_exp[B[i]] + f_exp[C[i]];
+        A[i] = f_exp[B[i]] ^ f_exp[C[i]];
     
     return to_uint64(A);
+}
+
+/**
+ * @brief Returns the inverse dot operation between two numbers
+ * such that a = dot(b, c)
+ * 
+ * @param a The 64-bit operand, result from dot(b, c)
+ * @param c The second 64-bit operand from dot(b, c)
+ * @return uint64_t The operand b from dot(b, c)
+ */
+static uint64_t inv_dot(uint64_t a, uint64_t c)
+{
+    uint8_t *A = to_uint8(a);
+    uint8_t *B = to_uint8(0);
+    uint8_t *C = to_uint8(c);
+
+    for (int i = 0; i < 8; i++)
+        B[i] = f_log[A[i] ^ f_exp[C[i]]];
+
+    return to_uint64(B);
+}
+
+/**
+ * @brief Returns the complementary of a 64-bit ineteger
+ * 
+ * @param a The 64-bit integer
+ * @return uint64_t The 64-bit integer b such that a + b = 0 mod 2^64
+ */
+static uint64_t complement(uint64_t a)
+{
+    return UINT64_MAX - a + 1;
 }
