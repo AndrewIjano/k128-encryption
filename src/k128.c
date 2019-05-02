@@ -69,58 +69,80 @@ static uint8_t *to_uint8(uint64_t n)
 }
 
 /**
- * @brief Converts a data in a 128-bit blocks array
+ * @brief Converts an array of bytes to blocks
  * 
- * @param data The data in bytes
- * @return uint64_t** 
+ * @param data The array of bytes
+ * @param data_size The size of the data
+ * @param is_encrypting If true, appends a extra block with the data size
+ * @return uint64_t** The array of blocks
  */
-static uint64_t **data_to_blocks(byte_t *data, uint64_t data_size)
+static uint64_t **data_to_blocks(byte_t *data, uint64_t data_size,
+                                 bool is_encrypting)
 {
-    uint64_t extended_data_size = data_size / 16 + (data_size % 16 > 0);
-    printf("%lu %lu\n", extended_data_size, data_size);
+    // Calculates the data size for a 16-byte multiple plus the data size block
+    uint64_t extended_data_size = data_size / 16 + (data_size % 16 > 0) + is_encrypting;
+    // Allocates the arrays
     uint64_t **data_blocks = malloc(sizeof(uint64_t *) * extended_data_size);
     uint64_t *data_block;
     for (uint64_t i = 0; i < 16*extended_data_size; i++)
     {
+        // Calculates auxiliary values
         uint64_t block_num = i / 16;
         uint64_t block_byte = i % 16;
         uint64_t block_slice = (block_byte < 8) ? 0 : 1;
-
+        
+        // Creates a block 
         if (block_byte == 0)
             data_block = malloc(sizeof(uint64_t) * 2);
 
+        // Initializes an slice of the block
         if (block_byte % 8 == 0)
             data_block[block_slice] = 0;
 
+        // Determines the byte to be allocated
+        // Fill with 1 bits incomplete blocks
         byte_t data_byte = 0xff;
         if (i < data_size)
             data_byte = data[i];
-
+        
+        // Puts the byte in the block
         data_block[block_slice] |= (uint64_t)data_byte << 8 * (7 - block_byte % 8);
 
+        // Puts the block in the array
         if (block_byte == 15)
             data_blocks[block_num] = data_block;
+    }
+    // Appends the data size block
+    if (is_encrypting)
+    {
+        data_block = malloc(sizeof(uint64_t) * 2); 
+        data_block[0] = -1;
+        data_block[1] = data_size;
+        data_blocks[extended_data_size - 1] = data_block;
     }
     return data_blocks;
 }
 
+/**
+ * @brief Converts 128-bit blocks to an array of bytes 
+ * 
+ * @param blocks The array of 128-bit blocks
+ * @param blocks_num The number of blocks
+ * @param data_size The size of the data (see is_encrypting)
+ * @return byte_t* The array of bytes
+ */
 static byte_t *blocks_to_data(uint64_t **blocks, uint64_t blocks_num,
-                              uint64_t data_size, bool is_encrypting)
+                              uint64_t data_size)
 {
-    byte_t *data = malloc(sizeof(byte_t) * 16 * (blocks_num + is_encrypting));
+    // Allocates the array of bytes
+    byte_t *data = malloc(sizeof(byte_t) * 16 * (blocks_num)); //+ is_encrypting));
     uint64_t i = 0;
+    // Puts each byte of the block in the array
     for (uint64_t block_num = 0; block_num < blocks_num; block_num++)
         for (int slice = 0; slice < 2; slice++)
             for (int byte = 0; byte < 8; byte++, i++)
                 data[i] = blocks[block_num][slice] >> 8 * (7 - byte);
-
-    if (is_encrypting)
-    {
-        uint8_t *data_size_in_bytes = to_uint8(data_size);
-        for (int j = 0; j < 8; j++, i++)
-            data[i] = data_size_in_bytes[j];
-        free(data_size_in_bytes);
-    }
+             
     return data;
 }
 
@@ -311,16 +333,16 @@ byte_t *encrypt(byte_t *plaintext_data, char *password, uint64_t file_size,
     char *primary_key = generate_primary_key(password);
     uint64_t *subkeys = generate_subkeys(primary_key);
     // Particionates the data in blocks
-    uint64_t **blocks = data_to_blocks(plaintext_data, file_size);
+    uint64_t **blocks = data_to_blocks(plaintext_data, file_size, true);
     // Calculates the number of blocks
-    uint64_t blocks_num = file_size / 16 + (file_size % 16 > 0);
+    uint64_t blocks_num = file_size / 16 + (file_size % 16 > 0) + 1;
     // Encrypts each block
     for (uint64_t i = 0; i < blocks_num; i++)
         block_encryption(blocks[i], subkeys);
     // Converts the block to an array fo bytes
-    byte_t *data = blocks_to_data(blocks, blocks_num, file_size, true);
+    byte_t *data = blocks_to_data(blocks, blocks_num, file_size);
     // Calculates the encrypted file size
-    *file_size_out = 16*blocks_num + 9;
+    *file_size_out = 16*blocks_num + 1;
     // Frees the memory allocated
     free(primary_key);
     free(subkeys);
@@ -370,20 +392,20 @@ void block_decryption(uint64_t *ciphertext_block, uint64_t *subkeys)
 byte_t *decrypt(byte_t *ciphertext_data, char *password, uint64_t file_size,
                 uint64_t *file_size_out)
 {
-    // Recovers the original file size
-    *file_size_out = to_uint64(ciphertext_data + file_size - 8);
     // Generates the keys
     char * primary_key = generate_primary_key(password);
     uint64_t *subkeys = generate_subkeys(primary_key);
     // Partionates the data in blocks
-    uint64_t **blocks = data_to_blocks(ciphertext_data, file_size);
+    uint64_t **blocks = data_to_blocks(ciphertext_data, file_size, false);
     // Calculates the number of blocks
-    uint64_t blocks_num = (file_size - 8) / 16 + ((file_size - 8) % 16 > 0);
+    uint64_t blocks_num = file_size / 16 + (file_size % 16 > 0);
     // Decrypts each block
     for (uint64_t i = 0; i < blocks_num; i++)
         block_decryption(blocks[i], subkeys);
     // Converts the blocks to an array of bytes
-    byte_t *data = blocks_to_data(blocks, blocks_num, file_size, false);
+    byte_t *data = blocks_to_data(blocks, blocks_num, file_size);
+    // Recovers the original file size
+    *file_size_out = to_uint64(data + file_size - 8);
     // Free the memory allocated
     free(primary_key);
     free(subkeys);
