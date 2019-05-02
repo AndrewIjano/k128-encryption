@@ -1,15 +1,15 @@
-#include "io_handling.h";
+#include "io_handling.h"
 
 /**
- * @brief Gets the file size object
+ * @brief Gets the file size object in bytes
  * 
  * @param file_name The file name
- * @return long The file size
+ * @return unsigned long long The file size
  */
-long get_file_size(char file_name[]) 
+uint64_t get_file_size(char file_name[]) 
 {
     FILE *p_input_file;
-    long file_size;
+    uint64_t file_size;
 
     p_input_file = fopen(file_name, "rb");
     if (p_input_file == NULL) 
@@ -33,7 +33,7 @@ long get_file_size(char file_name[])
  * @param file_bytes The array of bytes
  * @param file_size The file size
  */
-void read_file_to_array(char file_name[], byte_t file_bytes[], long file_size) 
+void read_file_to_array(char file_name[], byte_t file_bytes[], uint64_t file_size) 
 {
     FILE *p_input_file;
 
@@ -55,7 +55,7 @@ void read_file_to_array(char file_name[], byte_t file_bytes[], long file_size)
  * @param file_bytes The array of bytes
  * @param file_size The file size
  */
-void write_array_to_file(char file_name[], byte_t file_bytes[], long file_size) 
+void write_array_to_file(char file_name[], byte_t file_bytes[], uint64_t file_size) 
 {
     FILE *p_output_file;
 
@@ -65,7 +65,7 @@ void write_array_to_file(char file_name[], byte_t file_bytes[], long file_size)
         printf("Output file %s not found.\n", file_name);
         exit(1);
     }
-
+    
     fwrite(file_bytes, sizeof(*file_bytes), file_size, p_output_file);
     
     fclose(p_output_file);

@@ -40,6 +40,169 @@ int f_log[] = {
     };
 
 /**
+ * @brief Converts a 8 bytes array to a 64 bytes integer
+ * 
+ * @param buffer     The 8-bit array with 8 elements
+ * @return uint64_t  The 64-bit integer converted
+ */
+static uint64_t to_uint64(uint8_t *buffer)
+{
+    uint64_t n = 0;
+    // Puts the i-th buffer element in the i-th leftmost byte in n
+    for (int i = 0; i < 8; i++)
+        n |= (uint64_t)buffer[i] << 8 * (7 - i);
+    return n;
+}
+
+/**
+ * @brief Converts a 64 bytes integer to a 8 bytes array
+ * 
+ * @param n          The 64-bit integer
+ * @return uint8_t * The 8-bit array with 8 elements
+ */
+static uint8_t *to_uint8(uint64_t n)
+{
+    uint8_t *n_array = malloc(sizeof(int8_t) * 8);
+    for (int i = 0; i < 8; i++)
+        n_array[i] = n >> 8 * (7 - i);
+    return n_array;
+}
+
+/**
+ * @brief Converts a data in a 128-bit blocks array
+ * 
+ * @param data The data in bytes
+ * @return uint64_t** 
+ */
+static uint64_t **data_to_blocks(byte_t *data, uint64_t data_size)
+{
+    uint64_t extended_data_size = data_size / 16 + (data_size % 16 > 0);
+    printf("%lu %lu\n", extended_data_size, data_size);
+    uint64_t **data_blocks = malloc(sizeof(uint64_t *) * extended_data_size);
+    uint64_t *data_block;
+    for (uint64_t i = 0; i < 16*extended_data_size; i++)
+    {
+        uint64_t block_num = i / 16;
+        uint64_t block_byte = i % 16;
+        uint64_t block_slice = (block_byte < 8) ? 0 : 1;
+
+        if (block_byte == 0)
+            data_block = malloc(sizeof(uint64_t) * 2);
+
+        if (block_byte % 8 == 0)
+            data_block[block_slice] = 0;
+
+        byte_t data_byte = 0xff;
+        if (i < data_size)
+            data_byte = data[i];
+
+        data_block[block_slice] |= (uint64_t)data_byte << 8 * (7 - block_byte % 8);
+
+        if (block_byte == 15)
+            data_blocks[block_num] = data_block;
+    }
+    return data_blocks;
+}
+
+static byte_t *blocks_to_data(uint64_t **blocks, uint64_t blocks_num,
+                              uint64_t data_size, bool is_encrypting)
+{
+    byte_t *data = malloc(sizeof(byte_t) * 16 * (blocks_num + is_encrypting));
+    uint64_t i = 0;
+    for (uint64_t block_num = 0; block_num < blocks_num; block_num++)
+        for (int slice = 0; slice < 2; slice++)
+            for (int byte = 0; byte < 8; byte++, i++)
+                data[i] = blocks[block_num][slice] >> 8 * (7 - byte);
+
+    if (is_encrypting)
+    {
+        uint8_t *data_size_in_bytes = to_uint8(data_size);
+        for (int j = 0; j < 8; j++, i++)
+            data[i] = data_size_in_bytes[j];
+        free(data_size_in_bytes);
+    }
+    return data;
+}
+
+/**
+ * @brief Checks if the password is valid
+ * 
+ * @param password The string password
+ * @return true    If the number of letters >= 2,
+ *                 if the number of numbers >= 2,
+ *                 and if the password size >= 8
+ * @return false   Otherwise
+ */
+static bool is_valid_password(char *password)
+{
+    int letters = 0, digits = 0;
+    int pass_length = strlen(password);
+
+    // Counts the number of letters and numbers
+    for (int i = 0; i < pass_length; i++)
+    {
+        char c = password[i];
+        if (('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z'))
+            letters++;
+        if ('0' <= c && c <= '9')
+            digits++;
+    }
+
+    // Returns if the password is valid
+    return letters >= 2 && digits >= 2 && pass_length >= 8;
+}
+
+/**
+ * @brief Returns the dot operation between two numbers
+ * 
+ * @param b The first 64-bit operand
+ * @param c The second 64-bit operand
+ * @return uint64_t The operation result
+ */
+static uint64_t dot(uint64_t b, uint64_t c)
+{
+    // printf("oix\n");
+    uint8_t *A = to_uint8(0);
+    uint8_t *B = to_uint8(b);
+    uint8_t *C = to_uint8(c);
+    for (int i = 0; i < 8; i++)
+        A[i] = f_exp[B[i]] ^ f_exp[C[i]];
+
+    return to_uint64(A);
+}
+
+/**
+ * @brief Returns the inverse dot operation between two numbers
+ * such that a = dot(b, c)
+ * 
+ * @param a The 64-bit operand, result from dot(b, c)
+ * @param c The second 64-bit operand from dot(b, c)
+ * @return uint64_t The operand b from dot(b, c)
+ */
+static uint64_t inv_dot(uint64_t a, uint64_t c)
+{
+    uint8_t *A = to_uint8(a);
+    uint8_t *B = to_uint8(0);
+    uint8_t *C = to_uint8(c);
+
+    for (int i = 0; i < 8; i++)
+        B[i] = f_log[A[i] ^ f_exp[C[i]]];
+
+    return to_uint64(B);
+}
+
+/**
+ * @brief Returns the complementary of a 64-bit ineteger
+ * 
+ * @param a The 64-bit integer
+ * @return uint64_t The 64-bit integer b such that a + b = 0 mod 2^64
+ */
+static uint64_t complement(uint64_t a)
+{
+    return UINT64_MAX - a + 1;
+}
+
+/**
  * @brief Generates the subskeys from the primary key K
  * 
  * @param K The 128-bit primary key
@@ -116,7 +279,6 @@ void encryption_iteration(uint64_t *X, uint64_t *subkeys)
     // The first part of the iteration
     X[0] = dot(X[0], subkeys[0]);
     X[1] += subkeys[1];
-
     // The second part of the iteration
     uint64_t Y1 = X[0] ^ X[1];
     uint64_t Y2 = dot(dot(subkeys[2], Y1) + Y1, subkeys[3]);
@@ -131,22 +293,41 @@ void encryption_iteration(uint64_t *X, uint64_t *subkeys)
  * 
  * @param plaintext_block A 128-bit block of the plaintext
  * @param subkeys The 64-bit subkeys
- * @return uint64_t* The 128-bit encrypted block
  */
-uint64_t *block_encryption(uint64_t *plaintext_block, uint64_t *subkeys)
+void block_encryption(uint64_t *plaintext_block, uint64_t *subkeys)
 {
-    // Copies the plaintext block 
-    uint64_t *X = malloc(sizeof(uint64_t) * 2); 
-    X[0] = plaintext_block[0]; 
-    X[1] = plaintext_block[1];
     // Executes the encryption iterations
     for (int i = 0; i < R; i++)
-        encryption_iteration(X, subkeys + 4*i);
+        encryption_iteration(plaintext_block, subkeys + 4*i);
     // Executes the final iteration
-    X[0] = dot(X[0], subkeys[4*R]);
-    X[1] += subkeys[4*R + 1];
-    return X;
+    plaintext_block[0] = dot(plaintext_block[0], subkeys[4*R]);
+    plaintext_block[1] += subkeys[4*R + 1];
 }
+
+byte_t *encrypt(byte_t *plaintext_data, char *password, uint64_t file_size,
+                uint64_t *file_size_out)
+{
+    // Generates the keys
+    char *primary_key = generate_primary_key(password);
+    uint64_t *subkeys = generate_subkeys(primary_key);
+    // Particionates the data in blocks
+    uint64_t **blocks = data_to_blocks(plaintext_data, file_size);
+    // Calculates the number of blocks
+    uint64_t blocks_num = file_size / 16 + (file_size % 16 > 0);
+    // Encrypts each block
+    for (uint64_t i = 0; i < blocks_num; i++)
+        block_encryption(blocks[i], subkeys);
+    // Converts the block to an array fo bytes
+    byte_t *data = blocks_to_data(blocks, blocks_num, file_size, true);
+    // Calculates the encrypted file size
+    *file_size_out = 16*blocks_num + 9;
+    // Frees the memory allocated
+    free(primary_key);
+    free(subkeys);
+    free(blocks);
+    return data;
+}
+
 /**
  * @brief Executes the one decryption iteration
  * 
@@ -175,123 +356,38 @@ void decryption_iteration(uint64_t *Y, uint64_t *subkeys)
  * 
  * @param ciphertext_block A 128-bit block of the ciphertext 
  * @param subkeys The 64-bit subkeys
- * @return uint64_t* The 128-bit decrypted block
  */
-uint64_t *block_decryption(uint64_t *ciphertext_block, uint64_t *subkeys)
+void block_decryption(uint64_t *ciphertext_block, uint64_t *subkeys)
 {
-    // Copies the ciphertext block
-    uint64_t *Y = malloc(sizeof(uint64_t) * 2);
-    Y[0] = ciphertext_block[0];
-    Y[1] = ciphertext_block[1];
     // Executes the final iteration inverse 
-    Y[0] = inv_dot(Y[0], subkeys[4*R]);
-    Y[1] += complement(subkeys[4*R + 1]);
+    ciphertext_block[0] = inv_dot(ciphertext_block[0], subkeys[4*R]);
+    ciphertext_block[1] += complement(subkeys[4*R + 1]);
     // Executes the decryption iterations
     for (int i = R-1; i >= 0; i--)
-        decryption_iteration(Y, subkeys + 4*i);
-    return Y; 
+        decryption_iteration(ciphertext_block, subkeys + 4*i);
 }
 
-/**
- * @brief Converts a 8 bytes array to a 64 bytes integer
- * 
- * @param buffer     The 8-bit array with 8 elements
- * @return uint64_t  The 64-bit integer converted
- */
-static uint64_t to_uint64(uint8_t *buffer)
+byte_t *decrypt(byte_t *ciphertext_data, char *password, uint64_t file_size,
+                uint64_t *file_size_out)
 {
-    uint64_t n = 0;
-    // Puts the i-th buffer element in the i-th leftmost byte in n
-    for (int i = 0; i < 8; i++)
-        n |= (uint64_t) buffer[i] << 8*(7 - i);
-    return n; 
-}
+    // Recovers the original file size
+    *file_size_out = to_uint64(ciphertext_data + file_size - 8);
+    // Generates the keys
+    char * primary_key = generate_primary_key(password);
+    uint64_t *subkeys = generate_subkeys(primary_key);
+    // Partionates the data in blocks
+    uint64_t **blocks = data_to_blocks(ciphertext_data, file_size);
+    // Calculates the number of blocks
+    uint64_t blocks_num = (file_size - 8) / 16 + ((file_size - 8) % 16 > 0);
+    // Decrypts each block
+    for (uint64_t i = 0; i < blocks_num; i++)
+        block_decryption(blocks[i], subkeys);
+    // Converts the blocks to an array of bytes
+    byte_t *data = blocks_to_data(blocks, blocks_num, file_size, false);
+    // Free the memory allocated
+    free(primary_key);
+    free(subkeys);
+    free(blocks);
 
-/**
- * @brief Converts a 64 bytes integer to a 8 bytes array
- * 
- * @param n          The 64-bit integer
- * @return uint8_t * The 8-bit array with 8 elements
- */
-static uint8_t *to_uint8(uint64_t n)
-{
-    uint8_t *n_array = malloc(sizeof(int8_t) * 8);
-    for (int i = 0; i < 8; i++)
-        n_array[i] = n >> 8*(7 - i);
-    return n_array;
-}
-
-/**
- * @brief Checks if the password is valid
- * 
- * @param password The string password
- * @return true    If the number of letters >= 2,
- *                 if the number of numbers >= 2,
- *                 and if the password size >= 8
- * @return false   Otherwise
- */
-static bool is_valid_password(char *password)
-{
-    int letters = 0, digits = 0;
-    int pass_length = strlen(password);
-
-    // Counts the number of letters and numbers
-    for (int i = 0; i < pass_length; i++) {
-        char c = password[i];
-        if (('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z')) letters++;
-        if ('0' <= c && c <= '9') digits++;
-    }
-
-    // Returns if the password is valid
-    return letters >= 2 && digits >= 2 && pass_length >= 8;
-}
-
-/**
- * @brief Returns the dot operation between two numbers
- * 
- * @param b The first 64-bit operand
- * @param c The second 64-bit operand
- * @return uint64_t The operation result
- */
-static uint64_t dot(uint64_t b, uint64_t c)
-{
-    uint8_t *A = to_uint8(0);
-    uint8_t *B = to_uint8(b);
-    uint8_t *C = to_uint8(c);
-
-    for (int i = 0; i < 8; i++)
-        A[i] = f_exp[B[i]] ^ f_exp[C[i]];
-    
-    return to_uint64(A);
-}
-
-/**
- * @brief Returns the inverse dot operation between two numbers
- * such that a = dot(b, c)
- * 
- * @param a The 64-bit operand, result from dot(b, c)
- * @param c The second 64-bit operand from dot(b, c)
- * @return uint64_t The operand b from dot(b, c)
- */
-static uint64_t inv_dot(uint64_t a, uint64_t c)
-{
-    uint8_t *A = to_uint8(a);
-    uint8_t *B = to_uint8(0);
-    uint8_t *C = to_uint8(c);
-
-    for (int i = 0; i < 8; i++)
-        B[i] = f_log[A[i] ^ f_exp[C[i]]];
-
-    return to_uint64(B);
-}
-
-/**
- * @brief Returns the complementary of a 64-bit ineteger
- * 
- * @param a The 64-bit integer
- * @return uint64_t The 64-bit integer b such that a + b = 0 mod 2^64
- */
-static uint64_t complement(uint64_t a)
-{
-    return UINT64_MAX - a + 1;
+    return data;
 }

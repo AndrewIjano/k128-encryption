@@ -5,7 +5,7 @@ CFLAGS = -g -Wall
 SRCDIR = src
 
 LDFLAGS = -lm
-OBJFILES = $(SRCDIR)/k128.o $(SRCDIR)/main.o 
+OBJFILES = $(SRCDIR)/k128.o $(SRCDIR)/main.o $(SRCDIR)/io_handling.o 
 
 all: $(TARGET)
 
