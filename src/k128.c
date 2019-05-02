@@ -40,6 +40,20 @@ int f_log[] = {
     };
 
 /**
+ * @brief Converts two 64-bit values in a 128-bit block 
+ * 
+ * @param a First 64-bit value
+ * @param b Second 64-bit value
+ * @return uint64_t* The 128-bit block
+ */
+static uint64_t *uint64_to_block(uint64_t a, uint64_t b)
+{
+    uint64_t *block = malloc(sizeof(uint64_t) * 2);
+    block[0] = a;
+    block[1] = b;
+    return block;
+}
+/**
  * @brief Converts a 8 bytes array to a 64 bytes integer
  * 
  * @param buffer     The 8-bit array with 8 elements
@@ -114,12 +128,7 @@ static uint64_t **data_to_blocks(byte_t *data, uint64_t data_size,
     }
     // Appends the data size block
     if (is_encrypting)
-    {
-        data_block = malloc(sizeof(uint64_t) * 2); 
-        data_block[0] = -1;
-        data_block[1] = data_size;
-        data_blocks[extended_data_size - 1] = data_block;
-    }
+        data_blocks[extended_data_size - 1] = uint64_to_block(-1, data_size);
     return data_blocks;
 }
 
@@ -183,7 +192,6 @@ static bool is_valid_password(char *password)
  */
 static uint64_t dot(uint64_t b, uint64_t c)
 {
-    // printf("oix\n");
     uint8_t *A = to_uint8(0);
     uint8_t *B = to_uint8(b);
     uint8_t *C = to_uint8(c);
@@ -222,6 +230,18 @@ static uint64_t inv_dot(uint64_t a, uint64_t c)
 static uint64_t complement(uint64_t a)
 {
     return UINT64_MAX - a + 1;
+}
+
+/**
+ * @brief Executes a XOR operation to a 128-bit block
+ * 
+ * @param a The first operand and result of the operation
+ * @param b The second operand
+ */
+static void xor_128(uint64_t *a, uint64_t *b)
+{
+    a[0] ^= b[0];
+    a[1] ^= b[1];
 }
 
 /**
@@ -337,8 +357,13 @@ byte_t *encrypt(byte_t *plaintext_data, char *password, uint64_t file_size,
     // Calculates the number of blocks
     uint64_t blocks_num = file_size / 16 + (file_size % 16 > 0) + 1;
     // Encrypts each block
-    for (uint64_t i = 0; i < blocks_num; i++)
+    xor_128(blocks[0], uint64_to_block(0xffffffff, 0xffffffff));
+    block_encryption(blocks[0], subkeys);
+    for (uint64_t i = 1; i < blocks_num; i++)
+    {
+        xor_128(blocks[i], blocks[i-1]);
         block_encryption(blocks[i], subkeys);
+    }
     // Converts the block to an array fo bytes
     byte_t *data = blocks_to_data(blocks, blocks_num, file_size);
     // Calculates the encrypted file size
@@ -399,9 +424,14 @@ byte_t *decrypt(byte_t *ciphertext_data, char *password, uint64_t file_size,
     uint64_t **blocks = data_to_blocks(ciphertext_data, file_size, false);
     // Calculates the number of blocks
     uint64_t blocks_num = file_size / 16 + (file_size % 16 > 0);
-    // Decrypts each block
-    for (uint64_t i = 0; i < blocks_num; i++)
+    // Decrypts each block using the CBC mode
+    for (uint64_t i = blocks_num - 1; i > 0; i--)
+    {
         block_decryption(blocks[i], subkeys);
+        xor_128(blocks[i], blocks[i-1]);
+    }
+    block_decryption(blocks[0], subkeys);
+    xor_128(blocks[0], uint64_to_block(0xffffffff, 0xffffffff));
     // Converts the blocks to an array of bytes
     byte_t *data = blocks_to_data(blocks, blocks_num, file_size);
     // Recovers the original file size

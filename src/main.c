@@ -28,7 +28,6 @@ int main(int argc, char **argv)
     char password[MAX_PASSWORD_SIZE + 1];
     bool erase_file = false;
 
-    printf("oi\n");
     if (argc < 7)
     {
         printf("Wrong arguments given");

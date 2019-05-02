@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "io_handling.h"
+#include "utils.h"
 
 char *generate_primary_key(char *password);
 uint64_t *generate_subkeys(char *K);
