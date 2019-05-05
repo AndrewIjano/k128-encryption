@@ -9,9 +9,6 @@ OBJFILES = $(SRCDIR)/k128.o $(SRCDIR)/main.o $(SRCDIR)/io_handling.o $(SRCDIR)/u
 
 all: $(TARGET)
 
-tables: src/dot_tables_gen.c
-	$(CC) $(CFLAGS) -o tables $(SRCDIR)/dot_tables_gen.c $(LDFLAGS)
-
 $(TARGET): $(OBJFILES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(OBJFILES) $(LDFLAGS)
 

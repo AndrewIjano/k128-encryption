@@ -47,7 +47,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    // Gets the execution mode
     mode = argv[1][1];
+    // Copies the input filename
     strcpy(filename_in, argv[3]);
 
     if (mode == 'c' || mode == 'd')
@@ -57,11 +59,15 @@ int main(int argc, char **argv)
             printf("Wrong arguments given");
             exit(1);
         }
+        // Copies the output filename
         strcpy(filename_out, argv[5]);
+        // Copies the password
         strcpy(password, argv[7]);
+        // Calculates the erase_file flag
         do_erase_file = argc == 9 && strcmp(argv[8], "-a") == 0;
     }
     else
+        // Copies the password 
         strcpy(password, argv[5]);
    
     uint64_t file_size; 
@@ -69,14 +75,18 @@ int main(int argc, char **argv)
     byte_t *input_file;
     byte_t *output_file;
 
+    // Gets the file's size
     file_size = get_file_size(filename_in);
+    // Reads the input file to an array
     input_file = malloc(sizeof(byte_t) * file_size);
     read_file_to_array(filename_in, input_file, file_size);
     
     switch (mode)
     {
         case 'c':;
+            // Encrypts the file to an array
             output_file = encrypt(input_file, password, file_size, &file_size_out);
+            // Writes the array in the output file
             write_array_to_file(filename_out, output_file, file_size_out-1);
             free(input_file);
             free(output_file);
@@ -85,17 +95,19 @@ int main(int argc, char **argv)
                 erase_file(filename_in, file_size);
             break;
         case 'd':;
+            // Decrypts the file to an array 
             output_file = decrypt(input_file, password, file_size, &file_size_out);
-
+            // Writes the array in the output file
             write_array_to_file(filename_out, output_file, file_size_out);
-
             free(input_file);
             free(output_file);
             break;
         case '1':;
+            // Calculates the mode 1 entropy 
             entropy_meter(input_file, password, file_size, 1);
             break;
         case '2':;
+            // Calculates the mode 2 entropy 
             entropy_meter(input_file, password, file_size, 2);
             break;
     }

@@ -107,9 +107,8 @@ byte_t *blocks_to_data(uint64_t **blocks, uint64_t blocks_num,
 {
     // Allocates the array of bytes
     byte_t *data = malloc(sizeof(byte_t) * 16 * (blocks_num)); //+ is_encrypting));
-    uint64_t i = 0;
     // Puts each byte of the block in the array
-    for (uint64_t block_num = 0; block_num < blocks_num; block_num++)
+    for (uint64_t block_num = 0, i = 0; block_num < blocks_num; block_num++)
         for (int slice = 0; slice < 2; slice++)
             for (int byte = 0; byte < 8; byte++, i++)
                 data[i] = blocks[block_num][slice] >> 8 * (7 - byte);
