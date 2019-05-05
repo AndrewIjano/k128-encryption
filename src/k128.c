@@ -236,6 +236,7 @@ byte_t *encrypt(byte_t *plaintext_data, char *password, uint64_t file_size,
     // Generates the keys
     char *primary_key = generate_primary_key(password);
     uint64_t *subkeys = generate_subkeys(primary_key);
+    free(primary_key);
     // Particionates the data in blocks
     uint64_t **blocks = data_to_blocks(plaintext_data, file_size, true);
     // Calculates the number of blocks
@@ -253,9 +254,8 @@ byte_t *encrypt(byte_t *plaintext_data, char *password, uint64_t file_size,
     // Calculates the encrypted file size
     *file_size_out = 16*blocks_num + 1;
     // Frees the memory allocated
-    free(primary_key);
-    free(subkeys);
-    free(blocks);
+    // free(subkeys);
+    // free(blocks);
     return data;
 }
 
@@ -321,8 +321,8 @@ byte_t *decrypt(byte_t *ciphertext_data, char *password, uint64_t file_size,
     // Recovers the original file size
     *file_size_out = to_uint64(data + file_size - 8);
     // Free the memory allocated
-    free(primary_key);
-    free(subkeys);
+    // free(primary_key);
+    // free(subkeys);
     free(blocks);
 
     return data;

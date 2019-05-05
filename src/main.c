@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include "k128.h"
 #include "io_handling.h"
+#include "entropy_meter.h"
 
 #define MAX_PASSWORD_SIZE 16
 
@@ -22,13 +23,14 @@ void raise_argument_error(char *option)
 
 int main(int argc, char **argv) 
 {
+    
     int mode = -1;
     char filename_in[MAX_FILE_NAME_SIZE + 1];
     char filename_out[MAX_FILE_NAME_SIZE + 1];
     char password[MAX_PASSWORD_SIZE + 1];
     bool erase_file = false;
 
-    if (argc < 7)
+    if (argc < 6)
     {
         printf("Wrong arguments given");
         exit(1);
@@ -53,33 +55,34 @@ int main(int argc, char **argv)
    
     uint64_t file_size; 
     uint64_t file_size_out;
-    byte_t *plaintext;
-    byte_t *ciphertext;
+    byte_t *input_file;
+    byte_t *output_file;
+
+    file_size = get_file_size(filename_in);
+    input_file = malloc(sizeof(byte_t) * file_size);
+    read_file_to_array(filename_in, input_file, file_size);
+    
     switch (mode)
     {
         case 'c':;
-            file_size = get_file_size(filename_in);
-            plaintext = malloc(sizeof(byte_t) * file_size);
-            read_file_to_array(filename_in, plaintext, file_size);
-
-            ciphertext = encrypt(plaintext, password, file_size, &file_size_out);
-
-            write_array_to_file(filename_out, ciphertext, file_size_out-1);
-
-            free(plaintext);
-            free(ciphertext);
+            output_file = encrypt(input_file, password, file_size, &file_size_out);
+            write_array_to_file(filename_out, output_file, file_size_out-1);
+            free(input_file);
+            free(output_file);
             break;
         case 'd':;
-            file_size = get_file_size(filename_in);
-            ciphertext = malloc(sizeof(byte_t) * file_size);
-            read_file_to_array(filename_in, ciphertext, file_size);
+            output_file = decrypt(input_file, password, file_size, &file_size_out);
 
-            plaintext = decrypt(ciphertext, password, file_size, &file_size_out);
+            write_array_to_file(filename_out, output_file, file_size_out);
 
-            write_array_to_file(filename_out, plaintext, file_size_out);
-
-            free(ciphertext);
-            free(plaintext);
+            free(input_file);
+            free(output_file);
+            break;
+        case '1':;
+            entropy_meter(input_file, password, file_size, 1);
+            break;
+        case '2':;
+            entropy_meter(input_file, password, file_size, 2);
             break;
     }
 
