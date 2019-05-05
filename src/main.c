@@ -9,16 +9,27 @@
 
 #define MAX_PASSWORD_SIZE 16
 
-void raise_mode_error()
+/**
+ * @brief Overwrite with 0's and erases the file given
+ * 
+ * @param filename The file's name
+ * @param file_size The file's size
+ */
+static void erase_file(char *filename, uint64_t file_size)
 {
-    printf("Two execution modes given!\n");
-    exit(1);
-}
-
-void raise_argument_error(char *option)
-{
-    printf("No %s given.", option);
-    exit(1);
+    // Creates an array with 0's
+    byte_t *empty_file = malloc(sizeof(byte_t) * file_size);
+    for (int i = 0; i < file_size; i++)
+        empty_file[i] = 0;
+    // Overwrites the file
+    write_array_to_file(filename, empty_file, file_size);
+    
+    // Removes the file 
+    if (remove(filename)) 
+    {
+        printf("Unable to remove the file");
+        exit(1);
+    }
 }
 
 int main(int argc, char **argv) 
@@ -28,7 +39,7 @@ int main(int argc, char **argv)
     char filename_in[MAX_FILE_NAME_SIZE + 1];
     char filename_out[MAX_FILE_NAME_SIZE + 1];
     char password[MAX_PASSWORD_SIZE + 1];
-    bool erase_file = false;
+    bool do_erase_file = false;
 
     if (argc < 6)
     {
@@ -48,7 +59,7 @@ int main(int argc, char **argv)
         }
         strcpy(filename_out, argv[5]);
         strcpy(password, argv[7]);
-        erase_file = argc == 9 && strcmp(argv[8], "-a") == 0;
+        do_erase_file = argc == 9 && strcmp(argv[8], "-a") == 0;
     }
     else
         strcpy(password, argv[5]);
@@ -69,6 +80,9 @@ int main(int argc, char **argv)
             write_array_to_file(filename_out, output_file, file_size_out-1);
             free(input_file);
             free(output_file);
+
+            if (do_erase_file) 
+                erase_file(filename_in, file_size);
             break;
         case 'd':;
             output_file = decrypt(input_file, password, file_size, &file_size_out);
