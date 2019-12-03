@@ -45,5 +45,5 @@ Test the algorithm entropy (mode 2):
 ```bash
 $ ./k128 -2 -i test.in -p "SeCur3P4SS" 
 ```
-## Licence
+## License
 MIT
